@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import glob
+import argparse
 
 try:
     import pypandoc
@@ -76,7 +77,7 @@ def sanitize_filename(filename):
 def extract_title_and_preprocess(md_content):
     """
     Extracts title (H1 or first sentence) and preprocesses the Markdown content.
-    Specifically targets the redundant link format for cleaner output.
+    Converts redundant link format to footnotes for cleaner output.
     """
     title = None
     # Try to find the first H1 header
@@ -102,28 +103,42 @@ def extract_title_and_preprocess(md_content):
             title = "Untitled_Document" # Default if file is empty or only whitespace
             print("Warning: Could not determine title from content. Using default.")
 
-    # --- Preprocessing for links ---
+    # --- Preprocessing for citation-style links ---
     # Target pattern: ` ([Link Text](URL))` possibly repeated
-    # Strategy: Remove these citation-like links entirely for a cleaner read.
-    # This regex looks for optional whitespace, then '([', text, '](', url, '))'
+    # Strategy: Convert these citation-like links to proper footnotes
     processed_content = md_content
+    
+    # This regex captures citation-style links: ([Link Text](URL))
     link_pattern = r'\s*\(\[([^\]]+)\]\(([^)]+)\)\)'
-
-    # Repeatedly remove the pattern until no more matches are found
-    previous_content = None
-    while previous_content != processed_content:
-        previous_content = processed_content
-        processed_content = re.sub(link_pattern, '', processed_content)
-
-    # Optional: Handle standard markdown links if needed (e.g., convert to footnotes)
-    # For now, Pandoc handles standard [Text](URL) links correctly by default.
-
-    print("Preprocessing: Removed citation-like links '([Text](URL))'.")
+    
+    # Counter for footnotes
+    footnote_count = 1
+    
+    # Function to replace each match with a footnote reference
+    def replace_with_footnote(match):
+        nonlocal footnote_count
+        link_text = match.group(1)
+        url = match.group(2)
+        
+        # Check if the URL contains fragment identifiers (like #:~:text=)
+        # and clean it if needed
+        clean_url = re.sub(r'#:~:text=.*$', '', url)
+        
+        # Create the footnote reference and definition
+        footnote = f"[^{footnote_count}]"
+        footnote_def = f"\n[^{footnote_count}]: {link_text}. {clean_url}"
+        
+        footnote_count += 1
+        return footnote + footnote_def
+    
+    # Replace citation links with footnotes
+    processed_content = re.sub(link_pattern, replace_with_footnote, processed_content)
+    
+    print("Preprocessing: Converted citation-style links '([Text](URL))' to footnotes.")
     return title, processed_content
 
-
-def convert_md_to_docx(md_file_path, output_dir):
-    """Converts a single Markdown file to DOCX."""
+def convert_markdown(md_file_path, output_dir, output_format='epub'):
+    """Converts a single Markdown file to the specified format (EPUB by default)."""
     print(f"\nProcessing '{os.path.basename(md_file_path)}'...")
 
     try:
@@ -136,20 +151,31 @@ def convert_md_to_docx(md_file_path, output_dir):
 
         # Sanitize the title for use as a filename
         base_filename = sanitize_filename(title)
-        output_filename = f"{base_filename}.docx"
+        
+        # Set output format specific settings
+        if output_format.lower() == 'docx':
+            extension = 'docx'
+            format_name = 'DOCX'
+            extra_args = ['--wrap=none']
+        else:  # epub is default
+            extension = 'epub'
+            format_name = 'EPUB'
+            extra_args = ['--toc', '--toc-depth=2']  # Add table of contents for EPUB
+            
+        output_filename = f"{base_filename}.{extension}"
         output_path = os.path.join(output_dir, output_filename)
 
         # Create the output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
 
         # Perform the conversion using pypandoc
-        print(f"Converting to DOCX...")
+        print(f"Converting to {format_name}...")
         pypandoc.convert_text(
             processed_content,
-            'docx',
+            extension,
             format='md',
             outputfile=output_path,
-            extra_args=['--wrap=none'] # Optional: Prevent auto line wrapping if desired
+            extra_args=extra_args
         )
 
         print(f"Successfully converted '{os.path.basename(md_file_path)}'")
@@ -161,17 +187,50 @@ def convert_md_to_docx(md_file_path, output_dir):
         print(f"An error occurred during conversion: {e}")
         print("Ensure Pandoc is installed correctly and the Markdown file is valid.")
 
+def select_output_format():
+    """Asks the user to select the output format."""
+    print("\nSelect output format:")
+    print("1. EPUB (default, best for e-readers)")
+    print("2. DOCX (Microsoft Word)")
+    
+    while True:
+        try:
+            choice = input("Enter your choice (default: 1): ").strip() or "1"
+            if choice == "1":
+                return "epub"
+            elif choice == "2":
+                return "docx"
+            else:
+                print("Invalid choice. Please enter 1 or 2.")
+        except KeyboardInterrupt:
+            print("\nOperation cancelled by user.")
+            sys.exit(0)
+
 # --- Main Execution ---
 if __name__ == "__main__":
+    # Set up command line arguments
+    parser = argparse.ArgumentParser(description="Convert Markdown files to EPUB or DOCX")
+    parser.add_argument("-f", "--format", choices=["epub", "docx"], default="epub",
+                        help="Output format: epub (default) or docx")
+    parser.add_argument("-i", "--interactive", action="store_true",
+                        help="Run in interactive mode to select format via prompt")
+    
+    args = parser.parse_args()
+    
     check_pandoc() # Verify pandoc is available first
     
     # Ensure input directory exists
     os.makedirs(INPUT_DIR, exist_ok=True)
     
+    # Get output format
+    output_format = args.format
+    if args.interactive:
+        output_format = select_output_format()
+    
     md_files = find_md_files()
     selected_file = select_md_file(md_files)
 
     if selected_file:
-        convert_md_to_docx(selected_file, OUTPUT_DIR)
+        convert_markdown(selected_file, OUTPUT_DIR, output_format)
     else:
         print("No file selected. Exiting.") 
