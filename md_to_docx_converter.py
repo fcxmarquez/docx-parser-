@@ -15,6 +15,7 @@ except ImportError:
 
 # --- Configuration ---
 OUTPUT_DIR = "output"
+INPUT_DIR = "input"  # Added input directory configuration
 MAX_FILENAME_LENGTH = 60 # Keep filenames reasonably short
 
 # --- Helper Functions ---
@@ -30,8 +31,10 @@ def check_pandoc():
         print("and ensure it's added to your system's PATH.")
         sys.exit(1)
 
-def find_md_files(directory="."):
+def find_md_files(directory=INPUT_DIR):  # Changed default directory to INPUT_DIR
     """Finds all .md files in the specified directory."""
+    # Create the input directory if it doesn't exist
+    os.makedirs(directory, exist_ok=True)
     return glob.glob(os.path.join(directory, "*.md"))
 
 def select_md_file(files):
@@ -161,7 +164,10 @@ def convert_md_to_docx(md_file_path, output_dir):
 # --- Main Execution ---
 if __name__ == "__main__":
     check_pandoc() # Verify pandoc is available first
-
+    
+    # Ensure input directory exists
+    os.makedirs(INPUT_DIR, exist_ok=True)
+    
     md_files = find_md_files()
     selected_file = select_md_file(md_files)
 
