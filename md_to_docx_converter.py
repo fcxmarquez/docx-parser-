@@ -103,9 +103,23 @@ def extract_title_and_preprocess(md_content, remove_citations=False):
             title = "Untitled_Document" # Default if file is empty or only whitespace
             print("Warning: Could not determine title from content. Using default.")
 
-    # --- Preprocessing for citation-style links ---\n    # Target pattern: ` ([Link Text](URL))` possibly repeated\n    # Removing the footnote conversion logic to keep standard Markdown links intact for EPUB\n    processed_content = md_content\n    \n    # link_pattern = r\'\\s*\\(\\[([^\\]]+)\\]\\(([^)]+)\\)\\)\'\n    #\n    # if remove_citations:\n    #     # Simply remove the citations entirely\n    #     processed_content = re.sub(link_pattern, \'\', processed_content)\n    #     print(\"Preprocessing: Removed citation-style links \'([Text](URL))\'.\")\n    # else:\n    #     # Convert citations to footnotes\n    #     # Counter for footnotes\n    #     footnote_count = 1\n    #    \n    #     # Function to replace each match with a footnote reference\n    #     def replace_with_footnote(match):\n    #         nonlocal footnote_count\n    #         link_text = match.group(1)\n    #         url = match.group(2)\n    #        \n    #         # Check if the URL contains fragment identifiers (like #:~:text=)\n    #         # and clean it if needed\n    #         clean_url = re.sub(r\'#:~:text=.*$\', \'\', url)\n    #        \n    #         # Create the footnote reference and definition\n    #         footnote = f\"[^{footnote_count}]\"\n    #         footnote_def = f\"\\n[^{footnote_count}]: {link_text}. {clean_url}\"\n    #        \n    #         footnote_count += 1\n    #         return footnote + footnote_def\n    #    \n    #     # Replace citation links with footnotes\n    #     processed_content = re.sub(link_pattern, replace_with_footnote, processed_content)\n    #     print(\"Preprocessing: Converted citation-style links \'([Text](URL))\' to footnotes.\")\n    \n    return title, processed_content
-
-    return title, md_content
+    # --- Preprocessing for citation-style links ---
+    # Target pattern: ` ([Link Text](URL))` possibly repeated
+    processed_content = md_content
+    
+    # This regex captures citation-style links: ([Link Text](URL))
+    link_pattern = r'\s*\(\[([^\]]+)\]\(([^)]+)\)\)'
+    
+    if remove_citations:
+        # Simply remove the citations entirely
+        processed_content = re.sub(link_pattern, '', processed_content)
+        print("Preprocessing: Removed citation-style links '([Text](URL))'.")
+    else:
+        # Let the citations pass through as normal Markdown links for EPUB
+        # These will be further processed in convert_markdown if needed
+        processed_content = md_content
+    
+    return title, processed_content
 
 def convert_markdown(md_file_path, output_dir, output_format='epub', remove_citations=False):
     """Converts a single Markdown file to the specified format (EPUB by default)."""
@@ -118,6 +132,40 @@ def convert_markdown(md_file_path, output_dir, output_format='epub', remove_cita
 
         # Extract title and preprocess content
         title, processed_content = extract_title_and_preprocess(md_content, remove_citations)
+
+        # For DOCX format, if not removing citations, convert them to footnotes
+        if output_format.lower() == 'docx' and not remove_citations:
+            # This regex captures citation-style links: ([Link Text](URL))
+            link_pattern = r'\s*\(\[([^\]]+)\]\(([^)]+)\)\)'
+            
+            # Convert citations to footnotes for DOCX
+            footnote_count = 1
+            
+            # Function to replace each match with a footnote reference
+            def replace_with_footnote(match):
+                nonlocal footnote_count
+                link_text = match.group(1)
+                url = match.group(2)
+                
+                # Check if the URL contains fragment identifiers (like #:~:text=)
+                # and clean it if needed
+                clean_url = re.sub(r'#:~:text=.*$', '', url)
+                
+                # Create the footnote reference and definition
+                footnote = f"[^{footnote_count}]"
+                footnote_def = f"\n[^{footnote_count}]: {link_text}. {clean_url}"
+                
+                footnote_count += 1
+                return footnote + footnote_def
+            
+            # Replace citation links with footnotes
+            processed_content = re.sub(link_pattern, replace_with_footnote, processed_content)
+            print("Preprocessing for DOCX: Converted citation-style links '([Text](URL))' to footnotes.")
+        elif output_format.lower() == 'epub' and not remove_citations:
+            # For EPUB, convert ([Link Text](URL)) to normal [Link Text](URL) for proper linking
+            link_pattern = r'\s*\(\[([^\]]+)\]\(([^)]+)\)\)'
+            processed_content = re.sub(link_pattern, r' [\1](\2)', processed_content)
+            print("Preprocessing for EPUB: Converted citation-style links to standard Markdown links.")
 
         # Sanitize the title for use as a filename
         base_filename = sanitize_filename(title)
