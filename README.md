@@ -61,19 +61,30 @@ A Python script that converts Markdown files to EPUB or DOCX format, with smart 
 ## Features
 
 - Converts Markdown files to EPUB (default) or DOCX format
-- **Citation Handling Options**:
-  - Convert citation-style links to proper footnotes (default)
-  - Completely remove citations (using `-r` flag) for cleaner text
+- **Citation Handling**: Smart processing of citation-style links (see "Citation Handling" section below)
 - **E-reader Compatibility**:
   - Enhanced EPUB outputs with e-reader friendly settings
   - Proper handling of structure, metadata and fonts
 - EPUB output includes table of contents for better navigation
-- Smart citation handling: converts citation-style links to proper footnotes
 - Clean source URLs by removing tracking fragments from links
 - Places Markdown files in the 'input' folder for better organization
 - Extracts title from H1 header or first sentence for the filename
 - Sanitizes filenames to be compatible with all operating systems
 - Creates an organized output directory structure
+
+## Citation Handling
+
+The script handles citation-style links `([Link Text](URL))` differently depending on the output format:
+
+- **For EPUB output**:
+  - Default behavior: Converts citation-style links to standard Markdown links `[Link Text](URL)` which appear as clickable hyperlinks in e-readers
+  - With `-r` flag: Completely removes all citation-style links from the output
+
+- **For DOCX output**:
+  - Default behavior: Converts citation-style links to proper footnotes with the link text and URL in the footnote
+  - With `-r` flag: Completely removes all citation-style links from the output
+
+This format-specific behavior ensures optimal reading experience on each platform - clickable links on e-readers and proper academic-style footnotes in Word documents.
 
 ## E-reader Compatibility
 

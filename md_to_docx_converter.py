@@ -19,6 +19,9 @@ OUTPUT_DIR = "output"
 INPUT_DIR = "input"  # Added input directory configuration
 MAX_FILENAME_LENGTH = 60 # Keep filenames reasonably short
 
+# Regex pattern for citation-style links ([Link Text](URL)) enclosed in parentheses
+CITATION_LINK_PATTERN = r'\s*\(\[([^\]]+)\]\(([^)]+)\)\)'
+
 # --- Helper Functions ---
 
 def check_pandoc():
@@ -104,20 +107,17 @@ def extract_title_and_preprocess(md_content, remove_citations=False):
             print("Warning: Could not determine title from content. Using default.")
 
     # --- Preprocessing for citation-style links ---
-    # Target pattern: ` ([Link Text](URL))` possibly repeated
     processed_content = md_content
-    
-    # This regex captures citation-style links: ([Link Text](URL))
-    link_pattern = r'\s*\(\[([^\]]+)\]\(([^)]+)\)\)'
     
     if remove_citations:
         # Simply remove the citations entirely
-        processed_content = re.sub(link_pattern, '', processed_content)
+        processed_content = re.sub(CITATION_LINK_PATTERN, '', processed_content)
         print("Preprocessing: Removed citation-style links '([Text](URL))'.")
     else:
         # Let the citations pass through as normal Markdown links for EPUB
         # These will be further processed in convert_markdown if needed
-        processed_content = md_content
+        # No processing needed here; processed_content already equals md_content
+        print("Preprocessing: Citation-style links left intact for further processing.")
     
     return title, processed_content
 
@@ -135,9 +135,6 @@ def convert_markdown(md_file_path, output_dir, output_format='epub', remove_cita
 
         # For DOCX format, if not removing citations, convert them to footnotes
         if output_format.lower() == 'docx' and not remove_citations:
-            # This regex captures citation-style links: ([Link Text](URL))
-            link_pattern = r'\s*\(\[([^\]]+)\]\(([^)]+)\)\)'
-            
             # Convert citations to footnotes for DOCX
             footnote_count = 1
             
@@ -159,12 +156,11 @@ def convert_markdown(md_file_path, output_dir, output_format='epub', remove_cita
                 return footnote + footnote_def
             
             # Replace citation links with footnotes
-            processed_content = re.sub(link_pattern, replace_with_footnote, processed_content)
+            processed_content = re.sub(CITATION_LINK_PATTERN, replace_with_footnote, processed_content)
             print("Preprocessing for DOCX: Converted citation-style links '([Text](URL))' to footnotes.")
         elif output_format.lower() == 'epub' and not remove_citations:
             # For EPUB, convert ([Link Text](URL)) to normal [Link Text](URL) for proper linking
-            link_pattern = r'\s*\(\[([^\]]+)\]\(([^)]+)\)\)'
-            processed_content = re.sub(link_pattern, r' [\1](\2)', processed_content)
+            processed_content = re.sub(CITATION_LINK_PATTERN, r' [\1](\2)', processed_content)
             print("Preprocessing for EPUB: Converted citation-style links to standard Markdown links.")
 
         # Sanitize the title for use as a filename
