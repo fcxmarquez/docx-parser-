@@ -74,10 +74,10 @@ def sanitize_filename(filename):
     # Limit length
     return filename[:MAX_FILENAME_LENGTH]
 
-def extract_title_and_preprocess(md_content):
+def extract_title_and_preprocess(md_content, remove_citations=False):
     """
     Extracts title (H1 or first sentence) and preprocesses the Markdown content.
-    Converts redundant link format to footnotes for cleaner output.
+    Can either convert citation-style links to footnotes or remove them entirely.
     """
     title = None
     # Try to find the first H1 header
@@ -103,41 +103,11 @@ def extract_title_and_preprocess(md_content):
             title = "Untitled_Document" # Default if file is empty or only whitespace
             print("Warning: Could not determine title from content. Using default.")
 
-    # --- Preprocessing for citation-style links ---
-    # Target pattern: ` ([Link Text](URL))` possibly repeated
-    # Strategy: Convert these citation-like links to proper footnotes
-    processed_content = md_content
-    
-    # This regex captures citation-style links: ([Link Text](URL))
-    link_pattern = r'\s*\(\[([^\]]+)\]\(([^)]+)\)\)'
-    
-    # Counter for footnotes
-    footnote_count = 1
-    
-    # Function to replace each match with a footnote reference
-    def replace_with_footnote(match):
-        nonlocal footnote_count
-        link_text = match.group(1)
-        url = match.group(2)
-        
-        # Check if the URL contains fragment identifiers (like #:~:text=)
-        # and clean it if needed
-        clean_url = re.sub(r'#:~:text=.*$', '', url)
-        
-        # Create the footnote reference and definition
-        footnote = f"[^{footnote_count}]"
-        footnote_def = f"\n[^{footnote_count}]: {link_text}. {clean_url}"
-        
-        footnote_count += 1
-        return footnote + footnote_def
-    
-    # Replace citation links with footnotes
-    processed_content = re.sub(link_pattern, replace_with_footnote, processed_content)
-    
-    print("Preprocessing: Converted citation-style links '([Text](URL))' to footnotes.")
-    return title, processed_content
+    # --- Preprocessing for citation-style links ---\n    # Target pattern: ` ([Link Text](URL))` possibly repeated\n    # Removing the footnote conversion logic to keep standard Markdown links intact for EPUB\n    processed_content = md_content\n    \n    # link_pattern = r\'\\s*\\(\\[([^\\]]+)\\]\\(([^)]+)\\)\\)\'\n    #\n    # if remove_citations:\n    #     # Simply remove the citations entirely\n    #     processed_content = re.sub(link_pattern, \'\', processed_content)\n    #     print(\"Preprocessing: Removed citation-style links \'([Text](URL))\'.\")\n    # else:\n    #     # Convert citations to footnotes\n    #     # Counter for footnotes\n    #     footnote_count = 1\n    #    \n    #     # Function to replace each match with a footnote reference\n    #     def replace_with_footnote(match):\n    #         nonlocal footnote_count\n    #         link_text = match.group(1)\n    #         url = match.group(2)\n    #        \n    #         # Check if the URL contains fragment identifiers (like #:~:text=)\n    #         # and clean it if needed\n    #         clean_url = re.sub(r\'#:~:text=.*$\', \'\', url)\n    #        \n    #         # Create the footnote reference and definition\n    #         footnote = f\"[^{footnote_count}]\"\n    #         footnote_def = f\"\\n[^{footnote_count}]: {link_text}. {clean_url}\"\n    #        \n    #         footnote_count += 1\n    #         return footnote + footnote_def\n    #    \n    #     # Replace citation links with footnotes\n    #     processed_content = re.sub(link_pattern, replace_with_footnote, processed_content)\n    #     print(\"Preprocessing: Converted citation-style links \'([Text](URL))\' to footnotes.\")\n    \n    return title, processed_content
 
-def convert_markdown(md_file_path, output_dir, output_format='epub'):
+    return title, md_content
+
+def convert_markdown(md_file_path, output_dir, output_format='epub', remove_citations=False):
     """Converts a single Markdown file to the specified format (EPUB by default)."""
     print(f"\nProcessing '{os.path.basename(md_file_path)}'...")
 
@@ -147,7 +117,7 @@ def convert_markdown(md_file_path, output_dir, output_format='epub'):
             md_content = f.read()
 
         # Extract title and preprocess content
-        title, processed_content = extract_title_and_preprocess(md_content)
+        title, processed_content = extract_title_and_preprocess(md_content, remove_citations)
 
         # Sanitize the title for use as a filename
         base_filename = sanitize_filename(title)
@@ -160,8 +130,27 @@ def convert_markdown(md_file_path, output_dir, output_format='epub'):
         else:  # epub is default
             extension = 'epub'
             format_name = 'EPUB'
-            extra_args = ['--toc', '--toc-depth=2']  # Add table of contents for EPUB
             
+            # EPUB with e-reader friendly options (CSS flag removed)
+            extra_args = [
+                '--toc', 
+                '--toc-depth=2',
+                '--split-level=2',
+                '--metadata=lang:en'
+            ]
+            
+            # Check for metadata file and add if it exists
+            metadata_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'metadata.yaml')
+            if os.path.exists(metadata_path):
+                extra_args.append('--metadata-file=' + metadata_path)
+                print("Using metadata from metadata.yaml")
+            
+            # Check for cover image and add if it exists
+            cover_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cover.png')
+            if os.path.exists(cover_path):
+                extra_args.append('--epub-cover-image=' + cover_path)
+                print("Using cover image from cover.png")
+        
         output_filename = f"{base_filename}.{extension}"
         output_path = os.path.join(output_dir, output_filename)
 
@@ -190,7 +179,7 @@ def convert_markdown(md_file_path, output_dir, output_format='epub'):
 def select_output_format():
     """Asks the user to select the output format."""
     print("\nSelect output format:")
-    print("1. EPUB (default, best for e-readers)")
+    print("1. EPUB (default, for e-readers)")
     print("2. DOCX (Microsoft Word)")
     
     while True:
@@ -201,23 +190,26 @@ def select_output_format():
             elif choice == "2":
                 return "docx"
             else:
-                print("Invalid choice. Please enter 1 or 2.")
+                print("Invalid choice. Please enter a valid option.")
         except KeyboardInterrupt:
             print("\nOperation cancelled by user.")
             sys.exit(0)
 
 # --- Main Execution ---
 if __name__ == "__main__":
+    # Check for required tools
+    check_pandoc()
+    
     # Set up command line arguments
     parser = argparse.ArgumentParser(description="Convert Markdown files to EPUB or DOCX")
     parser.add_argument("-f", "--format", choices=["epub", "docx"], default="epub",
                         help="Output format: epub (default) or docx")
     parser.add_argument("-i", "--interactive", action="store_true",
                         help="Run in interactive mode to select format via prompt")
+    parser.add_argument("-r", "--remove-citations", action="store_true",
+                        help="Remove all citations instead of converting them to footnotes")
     
     args = parser.parse_args()
-    
-    check_pandoc() # Verify pandoc is available first
     
     # Ensure input directory exists
     os.makedirs(INPUT_DIR, exist_ok=True)
@@ -231,6 +223,6 @@ if __name__ == "__main__":
     selected_file = select_md_file(md_files)
 
     if selected_file:
-        convert_markdown(selected_file, OUTPUT_DIR, output_format)
+        convert_markdown(selected_file, OUTPUT_DIR, output_format, args.remove_citations)
     else:
         print("No file selected. Exiting.") 
